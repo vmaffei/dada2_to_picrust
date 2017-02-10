@@ -74,7 +74,7 @@ biom::write_biom(biom_object, biom_file = "genome_prediction/sample_counts.biom"
 # align w/ pynast using QIIME scripts; the included options lessen alignment restrictions to prevent alignment failure
 align_seqs.py -e 90 -p 0.1 -i ./genome_prediction/gg_13_5_study_db.fasta -o ./genome_prediction/gg_13_5_study_db.fasta.aligned
 # build tree with fasttree; options are taken from greengenes 13_5 readme notes
-FastTree -nt -gamma -fastest -no2nd -spr 4 ./genome_prediction/gg_13_5_study_db.fasta.aligned > ./genome_prediction/study_tree.tree
+FastTree -nt -gamma -fastest -no2nd -spr 4 ./genome_prediction/gg_13_5_study_db.fasta.aligned/gg_13_5_study_db_aligned.fasta > ./genome_prediction/study_tree.tree
 ```
 ## Part 3: Create new precalculated files
 **Adapted from** https://picrust.github.io/picrust/tutorials/genome_prediction.html
