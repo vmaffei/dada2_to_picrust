@@ -16,6 +16,16 @@ def subset_img(seqtab, ko, ref, img):
     img_ko = pd.DataFrame.from_csv(ko, sep='\t')
     id_img = pd.DataFrame.from_csv(img, sep='\t')\
     id_img_sub = id_img.loc[id_img["img_genome_id"].isin(list(set(id_img["img_genome_id"]).intersection(img_ko.index)))]
+    ref_dict = SeqIO.to_dict(SeqIO.parse(ref, "fasta"))
+    # Subset the gg refrence  fastq
+    ref_sub = {}
+    with open("gg_13_5_study_db.fasta", "w") as handle:
+        for key in map(str, list(id_img_sub.index)):
+            try:
+                SeqIO.write(ref_dict[key], handle, "fasta")
+            except KeyError:
+                pass
+    
     
 
 def main():
