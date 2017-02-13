@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 import argparse
+import pandas
+from Bio import SeqIO
+
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
 
@@ -8,12 +11,11 @@ __authors__ = "Gene Blanchard, Vince Maffei"
 '''
 dada2_to_picrust conversion using @vmaffei's workflow
 '''
-def R_code(seqtab, ko, ref, img):
-    ShortRead = importr("ShortRead")
-    Biom = importr("biom")
-    DADA = importr("dada2")
-    Base = importr("base")
-    ref = ShortRead.readFasta
+
+def subset_img(seqtab, ko, ref, img):
+    img_ko = pd.DataFrame.from_csv(ko, sep='\t')
+    id_img = pd.DataFrame.from_csv(img, sep='\t')\
+    id_img_sub = id_img.loc[id_img["img_genome_id"].isin(list(set(id_img["img_genome_id"]).intersection(img_ko.index)))]
     
 
 def main():
@@ -35,9 +37,12 @@ def main():
     # Parse arguments
     args = parser.parse_args()
     seqtab = args.seqtab
-    ko = args.ko
-    ref = args.ref
-    img = args.img
+    # ko = args.ko
+    # ref = args.ref
+    # img = args.img
+    ko = "data/IMG_ko_counts.tab"
+    ref = "data/gg_13_5.fasta"
+    img = "data/gg_13_5_img.txt"
 
     # Do stuff here
 
