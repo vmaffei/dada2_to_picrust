@@ -10,8 +10,15 @@ from skbio.sequence import DNASequence
 from pynast.util import pynast_seqs, pairwise_alignment_methods
 from pynast.logger import NastLogger
 import subprocess
+from cogent.parse.tree import DndParser
+from picrust.format_tree_and_trait_table import *
+from picrust.util import make_output_dir, PicrustNode
+from picrust.parse import parse_trait_table
+from os.path import join,splitext, basename
 
-__authors__ = "Gene Blanchard, Vince Maffei"
+__author__ = "Gene Blanchard"
+__credits__ = ["Vince Maffei", "Gene Blanchard"]
+
 
 '''
 dada2_to_picrust conversion using @vmaffei's workflow
@@ -101,21 +108,79 @@ def fasttree():
         popen = subprocess.Popen(args, stdout=tree)
         popen.wait()
 
+def format_tree_and_traits(tree, traits, mapping, output):
+    with open(tree, 'r') as tree_h:
+        tree = DndParser(tree_h)
+    with open(traits, 'U') as traits_h:
+        traits_lines = traits_h.readlines()
+    with open(mapping, 'U') as mapping_h:
+        trait_to_tree_mapping = make_id_mapping_dict(parse_id_mapping_file(mapping_h))
+    new_reference_tree, not_useful_trait_table_lines =\
+      reformat_tree_and_trait_table(\
+      tree=tree,\
+      trait_table_lines = [],\
+      trait_to_tree_mapping = None,\
+      input_trait_table_delimiter= None,\
+      output_trait_table_delimiter= None,\
+      filter_table_by_tree_tips=False,\
+      convert_trait_floats_to_ints=False,\
+      filter_tree_by_table_entries=False,\
+      convert_to_bifurcating=True,\
+      add_branch_length_to_root=False,\
+      name_unnamed_nodes=True,\
+      min_branch_length=0.0001,\
+      verbose=True)
+    new_reference_tree_copy=new_reference_tree.deepcopy()
+    new_tree, new_trait_table_lines = \
+      reformat_tree_and_trait_table(tree=new_reference_tree_copy,\
+      trait_table_lines = traits_lines,\
+      trait_to_tree_mapping = trait_to_tree_mapping,\
+      input_trait_table_delimiter= 'tab',\
+      output_trait_table_delimiter='tab',\
+      filter_table_by_tree_tips=True,\
+      convert_trait_floats_to_ints=False,\
+      filter_tree_by_table_entries=True,\
+      convert_to_bifurcating=False,\
+      add_branch_length_to_root=False,\
+      name_unnamed_nodes=False,\
+      min_branch_length=0.0001,\
+      verbose=True)
+    #Set output base file names
+    trait_table_base = 'trait_table.tab'
+    pruned_tree_base = 'pruned_tree.newick'
+    reference_tree_base = 'reference_tree.newick'
+    output_dir = make_output_dir(output,strict=False)
+    basefile = splitext(basename(tree))[0]
+    output_table_fp = join(output,"{}_{}".format(basefile, trait_table_base))
+    output_tree_fp = join(output,"{}_{}".format(basefile, pruned_tree_base))
+    output_reference_tree_fp = join(output,"{}_{}".format(basefile, reference_tree_base))
+    output_trait_table_file = open(output_table_fp,"w+")
+    output_tree_file  = open(output_tree_fp,"w+")
+    output_reference_tree_file  = open(output_reference_tree_fp,"w+")
+    
+    # format 16S copy number data
+    # format_tree_and_trait_table.py -t ./genome_prediction/study_tree.tree -i ./genome_prediction/picrust_starting_files/IMG_16S_counts.tab -m ./genome_prediction/gg_13_5_img.txt -o ./genome_prediction/format/16S/
+    # format kegg IMG data
+    # format_tree_and_trait_table.py -t ./genome_prediction/study_tree.tree -i ./genome_prediction/picrust_starting_files/IMG_ko_counts.tab -m ./genome_prediction/gg_13_5_img.txt -o ./genome_prediction/format/KEGG/
+    # perform ancestral state reconstruction
+
 
 def main():
     # Argument Parser
     parser = argparse.ArgumentParser(description='Get your dada2 data ready for picrust')
+    # Default refrence
+    def_ref = qdr.get_template_alignment()
 
     # Seqtab
-    parser.add_argument('-s', '--seqtab', dest='seqtab', required=True, help='dada2 seqtab.nochim rds file')
+    parser.add_argument('-s', '--seqtab', dest='seqtab', help='dada2 seqtab.nochim rds file')
     # IMG_ko_counts.tab
-    parser.add_argument('-k', '--ko', dest='ko', required=True, help='File: IMG_ko_counts.tab, see:https://github.com/picrust/picrust/blob/master/tutorials/picrust_starting_files.zip')
+    parser.add_argument('-k', '--ko', dest='ko', default="data/IMG_ko_counts.tab", help='File: IMG_ko_counts.tab, see:https://github.com/picrust/picrust/blob/master/tutorials/picrust_starting_files.zip')
     # GG ref
-    parser.add_argument('-r', '--ref', dest='ref', required=True, help='File: gg_13_5.fasta, see http://greengenes.secondgenome.com/downloads/database/13_5')
+    parser.add_argument('-r', '--ref', dest='ref', default="data/gg_13_5.fasta", help='File: gg_13_5.fasta, see http://greengenes.secondgenome.com/downloads/database/13_5')
     # GG img 
-    parser.add_argument('-i', '--img', dest='img', required=True, help='File: gg_13_5_img.txt, see http://greengenes.secondgenome.com/downloads/database/13_5')
+    parser.add_argument('-i', '--img', dest='img', default="data/gg_13_5_img.txt", help='File: gg_13_5_img.txt, see http://greengenes.secondgenome.com/downloads/database/13_5')
     # Template
-    parser.add_argument('-t', '--template', dest='template', default=qdr.get_template_alignmet(), help='Pynast Alignmet Template - Default:85_otus.pynast.fasta')
+    parser.add_argument('-t', '--template', dest='template', default=def_ref, help='Pynast Alignmet Template - Default:85_otus.pynast.fasta')
     
     # Output file
     parser.add_argument('-o', '--output', dest='output', help='The output file')
@@ -144,6 +209,9 @@ def main():
                 fasta_h.write(">{}\n{}\n".format(key, seqtab_dict[key]))
     else:
         print "Somehow your samples have the same names as GG ids"
+    pynasty("gg_13_5_dada_db.fasta")
+    fasttree()
+    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_16S_counts.tab", "data/gg_13_5_img.txt", "genome_prediction")
     
     
     
