@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 import argparse
 import qiime_default_reference as qdr
-import pandas
-from Bio import SeqIO
+import numpy as np
+import pandas as pd
+import itertools
 from skbio.parse.sequences import parse_fasta
 from skbio.alignment import SequenceCollection, Alignment
 from skbio.sequence import DNASequence
 from pynast.util import pynast_seqs, pairwise_alignment_methods
 from pynast.logger import NastLogger
+import subprocess
 
 __authors__ = "Gene Blanchard, Vince Maffei"
 
@@ -39,50 +41,66 @@ def format_seqtab_to_repset_table(seqtab):
                 parsed_lines.append(["#OTU ID"]+["node"+n for n in (map(str, range(0, len(otus))))])
             else:
                 parsed_lines.append(remove_quotes(line).rstrip().split(','))
-
         otuhandle.write('\n'.join(['\t'.join(line) for line in list(np.array(parsed_lines).T)]))
+    return otu_dict
+    
 
 
-def subset_img(seqtab, ko, ref, img):
+def subset_img(ko, ref, img):
+    # Subset IMG & KO
     img_ko = pd.DataFrame.from_csv(ko, sep='\t')
-    id_img = pd.DataFrame.from_csv(img, sep='\t')\
+    id_img = pd.DataFrame.from_csv(img, sep='\t')
     id_img_sub = id_img.loc[id_img["img_genome_id"].isin(list(set(id_img["img_genome_id"]).intersection(img_ko.index)))]
-    ref_dict = SeqIO.to_dict(SeqIO.parse(ref, "fasta"))
-    # Subset the gg refrence  fastq
-    ref_sub = {}
-    with open("gg_13_5_study_db.fasta", "w") as handle:
-        for key in map(str, list(id_img_sub.index)):
-            try:
-                SeqIO.write(ref_dict[key], handle, "fasta")
-            except KeyError:
-                pass
 
-def pynasty(fasta, template_file, min_pct=0.75, min_len=90):
-    # Prepare template
-    with open(template_file, 'r') as template_h:
-        template = [(seqid, seq.replace('.', '-').upper()) for seqid, seq in parse_fasta(template_h)]
-    template = Alignment.from_fasta_records(template, DNASequence, validate=True)
-    # Prepare logger
-    logger = NastLogger("pynast.log")
-    # Align
-    # Parse fasta
-    with open(fasta, 'r') as fasta_h:
-        inseqs = parse_fasta(fasta_h)
-        pynast_aligned, pynast_failed = pynast_seqs(inseqs, template, min_pct=min_pct, min_len=min_len, align_unaligned_seqs_f='blast', logger=logger)
+    # Create refrence dict
+    ref_dict = {}
+    key_list = map(str, list(id_img_sub.index))
+    with open(ref, 'r') as fasta_h:
+        for key, seq in itertools.izip_longest(*[fasta_h] * 2):
+            key = key.lstrip('>').rstrip('\n')
+            seq = seq.rstrip('\n')
+            if key in  key_list:
+                ref_dict[key] = seq
+    return ref_dict
+
+
+def pynasty(fasta, min_pct=0.75, min_len=90):
+    # load template sequences
+    template_alignment = []
+    template_alignment_fp = qdr.get_template_alignment()
+    for seq_id, seq in parse_fasta(open(template_alignment_fp)):
+        # replace '.' characters with '-' characters
+        template_alignment.append((seq_id, seq.replace('.', '-').upper()))
+    template_alignment = Alignment.from_fasta_records(template_alignment, DNASequence, validate=True)
+    # load candidate sequences
+    with open(fasta, 'U') as seq_file:
+        candidate_sequences = parse_fasta(seq_file)
+        pynast_aligned, pynast_failed = pynast_seqs(candidate_sequences, template_alignment, min_pct=min_pct, min_len=min_len)
+
+    failed = []
     for i, seq in enumerate(pynast_failed):
-        seq_record = DNASequence(str(seq), id=seq.Name)
-        pynast_failed[i] = seq_record
-    pynast_failed = SequenceCollection(pynast_failed)
-
+        skb_seq = DNASequence(str(seq), id=seq.Name)
+        failed.append(skb_seq)
+    pynast_failed = SequenceCollection(failed)
+    aligned = []
     for i, seq in enumerate(pynast_aligned):
-        seq_record = DNASequence(str(seq), id=seq.Name)
-        pynast_aligned[i] = seq_record
-    pynast_aligned = Alignment(pynast_aligned)
+        skb_seq = DNASequence(str(seq), id=seq.Name)
+        aligned.append(skb_seq)
+    pynast_aligned = Alignment(aligned)
 
     with open("pynast_failed.fa", 'w') as failed_h:
         failed_h.write(pynast_failed.to_fasta())
+
     with open("pynast_aligned.fa", 'w') as pynast_h:
         pynast_h.write(pynast_aligned.to_fasta())
+
+
+def fasttree():
+    args = "./bin/FastTree -nt -gamma -fastest -no2nd -spr 4 pynast_aligned.fa".split(' ')
+    with open("gg_13_5_study_db.tree", 'w') as tree:
+        popen = subprocess.Popen(args, stdout=tree)
+        popen.wait()
+
 
 def main():
     # Argument Parser
@@ -113,7 +131,24 @@ def main():
     img = "data/gg_13_5_img.txt"
 
     # Qiime files from seqtab
-    format_seqtab_to_repset_table(seqtab)
+    seqtab_dict = format_seqtab_to_repset_table(seqtab)
+    ref_dict = subset_img(ko, ref, img)
+    
+    # Combine dictionaries
+    # Check duplicate keys
+    if set(seqtab_dict.keys()).isdisjoint(ref_dict.keys()):
+        with open("gg_13_5_dada_db.fasta", 'w') as fasta_h:
+            for key in ref_dict:
+                fasta_h.write(">{}\n{}\n".format(key, ref_dict[key]))
+            for key in seqtab_dict:
+                fasta_h.write(">{}\n{}\n".format(key, seqtab_dict[key]))
+    else:
+        print "Somehow your samples have the same names as GG ids"
+    
+    
+    
+    
+    
     
 
 if __name__ == '__main__':
