@@ -108,8 +108,8 @@ def fasttree():
         popen = subprocess.Popen(args, stdout=tree)
         popen.wait()
 
-def format_tree_and_traits(tree, traits, mapping, output):
-    with open(tree, 'r') as tree_h:
+def format_tree_and_traits(treefile, traits, mapping, output):
+    with open(treefile, 'r') as tree_h:
         tree = DndParser(tree_h)
     with open(traits, 'U') as traits_h:
         traits_lines = traits_h.readlines()
@@ -135,8 +135,8 @@ def format_tree_and_traits(tree, traits, mapping, output):
       reformat_tree_and_trait_table(tree=new_reference_tree_copy,\
       trait_table_lines = traits_lines,\
       trait_to_tree_mapping = trait_to_tree_mapping,\
-      input_trait_table_delimiter= 'tab',\
-      output_trait_table_delimiter='tab',\
+      input_trait_table_delimiter= '\t',\
+      output_trait_table_delimiter='\t',\
       filter_table_by_tree_tips=True,\
       convert_trait_floats_to_ints=False,\
       filter_tree_by_table_entries=True,\
@@ -150,7 +150,7 @@ def format_tree_and_traits(tree, traits, mapping, output):
     pruned_tree_base = 'pruned_tree.newick'
     reference_tree_base = 'reference_tree.newick'
     output_dir = make_output_dir(output,strict=False)
-    basefile = splitext(basename(tree))[0]
+    basefile = splitext(basename(treefile))[0]
     output_table_fp = join(output,"{}_{}".format(basefile, trait_table_base))
     output_tree_fp = join(output,"{}_{}".format(basefile, pruned_tree_base))
     output_reference_tree_fp = join(output,"{}_{}".format(basefile, reference_tree_base))
@@ -158,12 +158,8 @@ def format_tree_and_traits(tree, traits, mapping, output):
     output_tree_file  = open(output_tree_fp,"w+")
     output_reference_tree_file  = open(output_reference_tree_fp,"w+")
     
-    # format 16S copy number data
-    # format_tree_and_trait_table.py -t ./genome_prediction/study_tree.tree -i ./genome_prediction/picrust_starting_files/IMG_16S_counts.tab -m ./genome_prediction/gg_13_5_img.txt -o ./genome_prediction/format/16S/
-    # format kegg IMG data
-    # format_tree_and_trait_table.py -t ./genome_prediction/study_tree.tree -i ./genome_prediction/picrust_starting_files/IMG_ko_counts.tab -m ./genome_prediction/gg_13_5_img.txt -o ./genome_prediction/format/KEGG/
-    # perform ancestral state reconstruction
-
+def asr():
+    pass
 
 def main():
     # Argument Parser
@@ -212,6 +208,7 @@ def main():
     pynasty("gg_13_5_dada_db.fasta")
     fasttree()
     format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_16S_counts.tab", "data/gg_13_5_img.txt", "genome_prediction")
+    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_ko_counts.tab", "data/gg_13_5_img.txt", "genome_prediction")
     
     
     
