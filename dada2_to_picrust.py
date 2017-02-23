@@ -4,6 +4,7 @@ import qiime_default_reference as qdr
 import numpy as np
 import pandas as pd
 import itertools
+import os
 from skbio.parse.sequences import parse_fasta
 from skbio.alignment import SequenceCollection, Alignment
 from skbio.sequence import DNASequence
@@ -15,6 +16,7 @@ from picrust.format_tree_and_trait_table import *
 from picrust.util import make_output_dir, PicrustNode
 from picrust.parse import parse_trait_table
 from os.path import join,splitext, basename
+from picrust import ancestral_state_reconstruction as pasr
 
 __author__ = "Gene Blanchard"
 __credits__ = ["Vince Maffei", "Gene Blanchard"]
@@ -107,6 +109,8 @@ def fasttree():
     with open("gg_13_5_study_db.tree", 'w') as tree:
         popen = subprocess.Popen(args, stdout=tree)
         popen.wait()
+    args = "sed -i -e '$a\' pynast_aligned.fa"
+
 
 def format_tree_and_traits(treefile, traits, mapping, output):
     with open(treefile, 'r') as tree_h:
@@ -154,12 +158,32 @@ def format_tree_and_traits(treefile, traits, mapping, output):
     output_table_fp = join(output,"{}_{}".format(basefile, trait_table_base))
     output_tree_fp = join(output,"{}_{}".format(basefile, pruned_tree_base))
     output_reference_tree_fp = join(output,"{}_{}".format(basefile, reference_tree_base))
-    output_trait_table_file = open(output_table_fp,"w+")
-    output_tree_file  = open(output_tree_fp,"w+")
-    output_reference_tree_file  = open(output_reference_tree_fp,"w+")
-    
-def asr():
+    with open(output_table_fp,"w+") as output_trait_table_file:
+        output_trait_table_file.write("\n".join(new_trait_table_lines))
+        
+    with open(output_tree_fp,"w+") as output_tree_file:
+        output_tree_file.write(new_tree.getNewick(with_distances=True))
+        
+    with open(output_reference_tree_fp,"w+") as output_reference_tree_file:
+        output_reference_tree_file.write(new_reference_tree.getNewick(with_distances=True))
+
+def predict_traits(table, tree, output):
     pass
+    
+def asr(tree, table, method, output):
+    if(method == 'wagner'):
+        asr_table = wagner_for_picrust(tree, table, HALT_EXEC=False)
+    elif(method == 'bayestraits'):
+        pass
+    elif(method == 'ML'):
+        asr_table,ci_table = ace_for_picrust(tree, table, 'ML',HALT_EXEC=False)
+    elif(method == 'pic'):
+        asr_table,ci_table = ace_for_picrust(tree, table, 'pic',HALT_EXEC=False)
+    elif(method == 'REML'):
+        asr_table,ci_table = ace_for_picrust(tree, table, 'REML',HALT_EXEC=False)
+    asr_table.writeToFile(output, sep='\t')
+    if not (method == 'wagner'):
+        ci_table.writeToFile(output, sep='\t')
 
 def main():
     # Argument Parser
@@ -191,26 +215,26 @@ def main():
     ref = "data/gg_13_5.fasta"
     img = "data/gg_13_5_img.txt"
 
-    # Qiime files from seqtab
-    seqtab_dict = format_seqtab_to_repset_table(seqtab)
-    ref_dict = subset_img(ko, ref, img)
-    
-    # Combine dictionaries
-    # Check duplicate keys
-    if set(seqtab_dict.keys()).isdisjoint(ref_dict.keys()):
-        with open("gg_13_5_dada_db.fasta", 'w') as fasta_h:
-            for key in ref_dict:
-                fasta_h.write(">{}\n{}\n".format(key, ref_dict[key]))
-            for key in seqtab_dict:
-                fasta_h.write(">{}\n{}\n".format(key, seqtab_dict[key]))
-    else:
-        print "Somehow your samples have the same names as GG ids"
-    pynasty("gg_13_5_dada_db.fasta")
-    fasttree()
-    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_16S_counts.tab", "data/gg_13_5_img.txt", "genome_prediction")
-    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_ko_counts.tab", "data/gg_13_5_img.txt", "genome_prediction")
-    
-    
+#    # Qiime files from seqtab
+#    seqtab_dict = format_seqtab_to_repset_table(seqtab)
+#    ref_dict = subset_img(ko, ref, img)
+#    
+#    # Combine dictionaries
+#    # Check duplicate keys
+#    if set(seqtab_dict.keys()).isdisjoint(ref_dict.keys()):
+#        with open("gg_13_5_dada_db.fasta", 'w') as fasta_h:
+#            for key in ref_dict:
+#                fasta_h.write(">{}\n{}\n".format(key, ref_dict[key]))
+#            for key in seqtab_dict:
+#                fasta_h.write(">{}\n{}\n".format(key, seqtab_dict[key]))
+#    else:
+#        print "Somehow your samples have the same names as GG ids"
+#    pynasty("gg_13_5_dada_db.fasta")
+#    fasttree()
+#    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_16S_counts.tab", "data/gg_13_5_img.txt", "genome_prediction_16s")
+#    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_ko_counts.tab", "data/gg_13_5_img.txt", "genome_prediction_kegg")
+    asr("genome_prediction_16s/gg_13_5_study_db_pruned_tree.newick", "genome_prediction_16s/gg_13_5_study_db_trait_table.tab", "pic", "genome_prediction_16s/16S_asr_counts.tab")
+    asr("genome_prediction_kegg/gg_13_5_study_db_pruned_tree.newick", "genome_prediction_kegg/gg_13_5_study_db_trait_table.tab", "pic", "genome_prediction_kegg/KEGG_asr_counts.tab")
     
     
     
