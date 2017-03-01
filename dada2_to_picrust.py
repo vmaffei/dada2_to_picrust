@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 import argparse
 import qiime_default_reference as qdr
+import re
+from collections import Counter
+import operator
 import numpy as np
 import pandas as pd
 import itertools
@@ -17,6 +20,12 @@ from picrust.util import make_output_dir, PicrustNode
 from picrust.parse import parse_trait_table
 from os.path import join,splitext, basename
 from picrust import ancestral_state_reconstruction as pasr
+from picrust.predict_traits import assign_traits_to_tree,\
+  predict_traits_from_ancestors, update_trait_dict_from_file,\
+  make_neg_exponential_weight_fn, biom_table_from_predictions,\
+  predict_random_neighbor,predict_nearest_neighbor,\
+  calc_nearest_sequenced_taxon_index,weighted_average_tip_prediction, \
+  get_brownian_motion_param_from_confidence_intervals
 
 __author__ = "Gene Blanchard"
 __credits__ = ["Vince Maffei", "Gene Blanchard"]
@@ -52,7 +61,7 @@ def format_seqtab_to_repset_table(seqtab):
                 parsed_lines.append(remove_quotes(line).rstrip().split(','))
         otuhandle.write('\n'.join(['\t'.join(line) for line in list(np.array(parsed_lines).T)]))
     return otu_dict
-    
+
 
 
 def subset_img(ko, ref, img):
@@ -103,10 +112,43 @@ def pynasty(fasta, min_pct=0.75, min_len=90):
     with open("pynast_aligned.fa", 'w') as pynast_h:
         pynast_h.write(pynast_aligned.to_fasta())
 
+def gap_trimmer(infa, outfa, method="min"):
+    fwd_counts = Counter()
+    rev_counts = Counter()
+    with open(infa, 'r') as fa_h:
+        for line in fa_h:
+            line = line.rstrip('\n')
+            if line.startswith('>'):
+                name = line
+                if line.startswith(">node"):
+                    NODE = True
+                else:
+                    NODE = False
+            else:
+                if NODE:
+                    fwd_count = len(re.split('[A,C,G,T]', line, maxsplit=1)[0])
+                    rev_count = len(re.split('[A,C,G,T]', line[::-1], maxsplit=1)[0])
+                    fwd_counts[len(re.split('[A,C,G,T]', line, maxsplit=1)[0])] += 1
+                    rev_counts[len(re.split('[A,C,G,T]', line[::-1], maxsplit=1)[0])] += 1
+    # Trim params
+    if method == "min":
+        fwd_trim = min(fwd_counts)
+        rev_trim = min(rev_counts)
+    if method == "most":
+        fwd_trim = max(fwd_counts.iteritems(), key=operator.itemgetter(1))[0]
+        rev_trim = max(rev_counts.iteritems(), key=operator.itemgetter(1))[0]
+    with open(infa, 'r') as fa_h, open(outfa, 'w') as out_h:
+        for line in fa_h:
+            line = line.rstrip('\n')
+            if line.startswith('>'):
+                out_h.write(line+"\n")
+            else:
+                line = line[fwd_trim::][::-1][rev_trim::][::-1]
+                out_h.write(line+"\n")
 
-def fasttree():
-    args = "./bin/FastTree -nt -gamma -fastest -no2nd -spr 4 pynast_aligned.fa".split(' ')
-    with open("gg_13_5_study_db.tree", 'w') as tree:
+def fasttree(infile, outfile):
+    args = "./bin/FastTree -nt -gamma -fastest -no2nd -spr 4 {}".format(infile).split(' ')
+    with open(outfile, 'w') as tree:
         popen = subprocess.Popen(args, stdout=tree)
         popen.wait()
     args = "sed -i -e '$a\' pynast_aligned.fa"
@@ -160,17 +202,14 @@ def format_tree_and_traits(treefile, traits, mapping, output):
     output_reference_tree_fp = join(output,"{}_{}".format(basefile, reference_tree_base))
     with open(output_table_fp,"w+") as output_trait_table_file:
         output_trait_table_file.write("\n".join(new_trait_table_lines))
-        
+
     with open(output_tree_fp,"w+") as output_tree_file:
         output_tree_file.write(new_tree.getNewick(with_distances=True))
-        
+
     with open(output_reference_tree_fp,"w+") as output_reference_tree_file:
         output_reference_tree_file.write(new_reference_tree.getNewick(with_distances=True))
 
-def predict_traits(table, tree, output):
-    pass
-    
-def asr(tree, table, method, output):
+def asr(tree, table, method, outtable, outci):
     if(method == 'wagner'):
         asr_table = wagner_for_picrust(tree, table, HALT_EXEC=False)
     elif(method == 'bayestraits'):
@@ -181,9 +220,27 @@ def asr(tree, table, method, output):
         asr_table,ci_table = ace_for_picrust(tree, table, 'pic',HALT_EXEC=False)
     elif(method == 'REML'):
         asr_table,ci_table = ace_for_picrust(tree, table, 'REML',HALT_EXEC=False)
-    asr_table.writeToFile(output, sep='\t')
+    asr_table.writeToFile(outtable, sep='\t')
     if not (method == 'wagner'):
-        ci_table.writeToFile(output, sep='\t')
+        ci_table.writeToFile(outci, sep='\t')
+
+def predict_traits(treefile, tabelfile, traittable, conf, output):
+    treefile = load_picrust_tree(tree)
+    table_headers = []
+    traits = {}
+    table_headers, traits = update_trait_dict_from_file(traittable)
+    with open(conf) as asr_confidence_output:
+        asr_min_vals,asr_max_vals, params,column_mapping = parse_asr_confidence_output(asr_confidence_output, 'sigma')
+    if 'sigma' in params:
+        brownian_motion_parameter = params['sigma'][0]
+    else:
+        brownian_motion_parameter = None
+
+def vsearch(infile, outfile):
+    args = "vsearch --usearch_global {} -db data/gg_13_5.fasta --matched {} --id 0.5".format(infile, outfile).split(' ')
+    with open("vsearch.log", 'w') as log:
+        popen = subprocess.Popen(args, stdout=log)
+        popen.wait()
 
 def main():
     # Argument Parser
@@ -197,11 +254,11 @@ def main():
     parser.add_argument('-k', '--ko', dest='ko', default="data/IMG_ko_counts.tab", help='File: IMG_ko_counts.tab, see:https://github.com/picrust/picrust/blob/master/tutorials/picrust_starting_files.zip')
     # GG ref
     parser.add_argument('-r', '--ref', dest='ref', default="data/gg_13_5.fasta", help='File: gg_13_5.fasta, see http://greengenes.secondgenome.com/downloads/database/13_5')
-    # GG img 
+    # GG img
     parser.add_argument('-i', '--img', dest='img', default="data/gg_13_5_img.txt", help='File: gg_13_5_img.txt, see http://greengenes.secondgenome.com/downloads/database/13_5')
     # Template
     parser.add_argument('-t', '--template', dest='template', default=def_ref, help='Pynast Alignmet Template - Default:85_otus.pynast.fasta')
-    
+
     # Output file
     parser.add_argument('-o', '--output', dest='output', help='The output file')
 
@@ -215,30 +272,34 @@ def main():
     ref = "data/gg_13_5.fasta"
     img = "data/gg_13_5_img.txt"
 
-#    # Qiime files from seqtab
-#    seqtab_dict = format_seqtab_to_repset_table(seqtab)
-#    ref_dict = subset_img(ko, ref, img)
-#    
-#    # Combine dictionaries
-#    # Check duplicate keys
-#    if set(seqtab_dict.keys()).isdisjoint(ref_dict.keys()):
-#        with open("gg_13_5_dada_db.fasta", 'w') as fasta_h:
-#            for key in ref_dict:
-#                fasta_h.write(">{}\n{}\n".format(key, ref_dict[key]))
-#            for key in seqtab_dict:
-#                fasta_h.write(">{}\n{}\n".format(key, seqtab_dict[key]))
-#    else:
-#        print "Somehow your samples have the same names as GG ids"
-#    pynasty("gg_13_5_dada_db.fasta")
-#    fasttree()
-#    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_16S_counts.tab", "data/gg_13_5_img.txt", "genome_prediction_16s")
-#    format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_ko_counts.tab", "data/gg_13_5_img.txt", "genome_prediction_kegg")
-    asr("genome_prediction_16s/gg_13_5_study_db_pruned_tree.newick", "genome_prediction_16s/gg_13_5_study_db_trait_table.tab", "pic", "genome_prediction_16s/16S_asr_counts.tab")
-    asr("genome_prediction_kegg/gg_13_5_study_db_pruned_tree.newick", "genome_prediction_kegg/gg_13_5_study_db_trait_table.tab", "pic", "genome_prediction_kegg/KEGG_asr_counts.tab")
-    
-    
-    
-    
+    # Qiime files from seqtab
+    seqtab_dict = format_seqtab_to_repset_table(seqtab)
+    ref_dict = subset_img(ko, ref, img)
+
+    # Combine dictionaries
+    # Check duplicate keys
+    if set(seqtab_dict.keys()).isdisjoint(ref_dict.keys()):
+        with open("gg_13_5_dada_db.fasta", 'w') as fasta_h:
+            for key in ref_dict:
+                fasta_h.write(">{}\n{}\n".format(key, ref_dict[key]))
+            for key in seqtab_dict:
+                fasta_h.write(">{}\n{}\n".format(key, seqtab_dict[key]))
+    else:
+        print "Somehow your samples have the same names as GG ids"
+    vsearch("gg_13_5_dada_db.fasta", "gg_13_5_dada_db.filtered.fasta")
+    pynasty("gg_13_5_dada_db.filtered.fasta")
+    gap_trimmer("pynast_aligned.fa", "pynast_aligned.trimmed.fa", method="most")
+    fasttree("pynast_aligned.trimmed.fa", "gg_13_5_study_db.vsearch.trimmed.methodmost.tree")
+    gap_trimmer("pynast_aligned.fa", "pynast_aligned.trimmed.fa", method="min")
+    fasttree("pynast_aligned.trimmed.fa", "gg_13_5_study_db.vsearch.trimmed.methodmin.tree")
+    # format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_16S_counts.tab", "data/gg_13_5_img.txt", "genome_prediction_16s")
+    # format_tree_and_traits("gg_13_5_study_db.tree", "data/IMG_ko_counts.tab", "data/gg_13_5_img.txt", "genome_prediction_kegg")
+    # asr("genome_prediction_16s/gg_13_5_study_db_pruned_tree.newick", "genome_prediction_16s/gg_13_5_study_db_trait_table.tab", "pic", "genome_prediction_16s/16S_asr_counts.tab", "genome_prediction_16s/16S_asr_ci.tab")
+    # asr("genome_prediction_kegg/gg_13_5_study_db_pruned_tree.newick", "genome_prediction_kegg/gg_13_5_study_db_trait_table.tab", "pic", "genome_prediction_kegg/KEGG_asr_counts.tab", "genome_prediction_kegg/KEGG_asr_ci.tab")
+
+
+
+
 
 if __name__ == '__main__':
     main()
