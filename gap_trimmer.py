@@ -37,7 +37,7 @@ def gap_trimmer(infa, outfa, prefix, verbose):
             print "\t{}\t{}\n".format(key, fwd_counts[key])
         print "Forward Trim:\t{}\n".format(fwd_trim) 
         print "Reverse Counts:\n\tLength\tCount\n"
-        for key in sorted(fwd_counts.keys()):
+        for key in sorted(rev_counts.keys()):
             print "\t{}\t{}\n".format(key, rev_counts[key])
         print "Reverse Trim:\t{}\n".format(rev_trim) 
     with open(infa, 'r') as fa_h, open(outfa, 'w') as out_h:
