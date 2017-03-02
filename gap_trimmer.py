@@ -69,7 +69,7 @@ def main():
     prefix = args.prefix
     verbose = args.verbose
 
-    # Do stuff here
-    
+    gap_trimmer(infile, outfile, prefix, verbose)
+
 if __name__ == '__main__':
     main()
