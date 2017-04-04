@@ -45,7 +45,8 @@ sed -i '/^\s*$/d' gg_ko_counts.tab
 **Note:** Make sure to modify file locations and directories as you like them; this pipeline as written assumes the input files and folders (listed above) are in a folder named `genome_prediction` which is within your current directory. Also, double check that vsearch is in your path. If not, just swap "vsearch" below with an absolute path to the vsearch binary.
 
 ```R
-# Dependencies
+# Dependencies: ShortRead
+library(ShortRead)
 # 1) Make study db
 # grab study seqs
 load(file = "genome_prediction/seqtab.nochim.robj")
