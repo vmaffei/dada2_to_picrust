@@ -45,8 +45,9 @@ sed -i '/^\s*$/d' gg_ko_counts.tab
 **Note:** Make sure to modify file locations and directories as you like them; this pipeline as written assumes the input files and folders (listed above) are in a folder named `genome_prediction` which is within your current directory. Also, double check that vsearch is in your path. If not, just swap "vsearch" below with an absolute path to the vsearch binary.
 
 ```R
-# Dependencies: ShortRead
+# Dependencies: ShortRead & biom
 library(ShortRead)
+library(biom) # note: use Joey's biom latest dev version; library(devtools); install_github("joey711/biom");
 # 1) Make study db
 # grab study seqs
 load(file = "genome_prediction/seqtab.nochim.robj")
@@ -62,7 +63,6 @@ writeFasta(fasta, file = "genome_prediction/gg_13_5_study_db.fasta.pre")
 system('vsearch --usearch_global genome_prediction/gg_13_5_study_db.fasta.pre --db genome_prediction/gg_13_5.fasta --matched genome_prediction/gg_13_5_study_db.fasta --id 0.97')
 id_filtered <- as.character(id(readFasta("genome_prediction/gg_13_5_study_db.fasta")))
 db_out_filt <- db_out[db_out$ids%in%id_filtered,]
-# note: use Joey's biom latest dev version; library(devtools); install_github("joey711/biom")
 seqtab_biom <- t(seqtab.nochim)
 # 2) output seq variant count data as biom;
 # subset seqtab and output sample count biom
