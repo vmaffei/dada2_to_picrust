@@ -98,9 +98,11 @@ format_tree_and_trait_table.py -t ./genome_prediction/study_tree.tree -i gg_ko_c
 # perform ancestral state reconstruction
 ancestral_state_reconstruction.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/pruned_tree.newick -o ./genome_prediction/asr/16S_asr_counts.tab -c ./genome_prediction/asr/asr_ci_16S.tab
 ancestral_state_reconstruction.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/pruned_tree.newick -o ./genome_prediction/asr/KEGG_asr_counts.tab -c ./genome_prediction/asr/asr_ci_KEGG.tab
+# collect study sequence ids for predict_traits.py -g (greatly reduces runtime)
+grep "study_[0-9]*" ./genome_prediction/gg_13_5_study_db.fasta.aligned.filtered/gg_13_5_study_db_aligned_pfiltered.fasta -o | tr "\n" "," > study_ids
 # predict traits
-predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_16S.tab
-predict_traits.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/asr/KEGG_asr_counts.tab -o ./genome_prediction/predict_traits/ko_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_KEGG.tab
+predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_16S.tab -g "$(< study_ids)"
+predict_traits.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/asr/KEGG_asr_counts.tab -o ./genome_prediction/predict_traits/ko_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_KEGG.tab -g "$(< study_ids)"
 ```
 ## Part 4: Run PICRUSt (finally!)
 ```sh
