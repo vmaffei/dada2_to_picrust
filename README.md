@@ -78,7 +78,7 @@ system('cat genome_prediction/gg_13_5.fasta >> genome_prediction/gg_13_5_study_d
 ```sh
 # align w/ pynast using QIIME scripts; the included options lessen alignment restrictions to prevent alignment failure
 # minimum sequence length set by -e
-# alignment runtime greatly reduced by parallelization: parallel_align_seqs_pynast.py w/ -O and # of cores
+# alignment runtime greatly reduced by parallelization: parallel_align_seqs_pynast.py -O and # of cores
 align_seqs.py -e 90 -p 0.1 -i ./genome_prediction/gg_13_5_study_db.fasta -o ./genome_prediction/gg_13_5_study_db.fasta.aligned
 # filter alignment with default settings; consider lane filtering by entropy using -e and a low entropy value of ~0.01-0.02
 # note: FastTree and/or PICRUSt produce weird errors (segfaults) if -e filters too many lanes
