@@ -1,7 +1,10 @@
 
-# DADA2 -> PICRUSt via ASR (v2)
+# DADA2 -> PICRUSt via ASR (v2.1)
 
 ## Readme
+Updates from (v2)
+- Added steps to enable categorize_by_function.py
+
 Updates from (v1):
 - Validation against shotgun metagenome data available
 	- DADA2-PICRUSt performs as well as VSEARCH-PICRUSt (see figures below)
@@ -36,6 +39,8 @@ gunzip -c 16S_13_5_precalculated.tab.gz | sed 's/\#OTU_IDs/taxon_oid/g' > gg_16S
 gunzip -c ko_13_5_precalculated.tab.gz | sed 's/\#OTU_IDs/GenomeID/g' > gg_ko_counts.tab
 # remove empty lines in gg_ko_counts.tab
 sed -i '/^\s*$/d' gg_ko_counts.tab
+# save KEGG Pathways and Description metadata
+gunzip -c ko_13_5_precalculated.tab.gz | tail -n 2 > kegg_meta
 ```
 
 ## Part 1: Start with R
@@ -79,13 +84,13 @@ system('cat genome_prediction/gg_13_5.fasta >> genome_prediction/gg_13_5_study_d
 # align w/ pynast using QIIME scripts; the included options lessen alignment restrictions to prevent alignment failure
 # minimum sequence length set by -e
 # alignment runtime greatly reduced by parallelization: parallel_align_seqs_pynast.py -O and # of cores
-align_seqs.py -e 90 -p 0.1 -i ./genome_prediction/gg_13_5_study_db.fasta -o ./genome_prediction/gg_13_5_study_db.fasta.aligned
+parallel_align_seqs_pynast.py -e 90 -p 0.1 -i ./genome_prediction/gg_13_5_study_db.fasta -o ./genome_prediction/gg_13_5_study_db.fasta.aligned -O 45
 # filter alignment with default settings; consider lane filtering by entropy using -e and a low entropy value of ~0.01-0.02
 # note: FastTree and/or PICRUSt produce weird errors (segfaults) if -e filters too many lanes
 filter_alignment.py -i ./genome_prediction/gg_13_5_study_db.fasta.aligned/gg_13_5_study_db_aligned.fasta -o ./genome_prediction/gg_13_5_study_db.fasta.aligned.filtered/
 # build tree with fasttree; options are taken from greengenes 13_5 readme notes
 # tree building runtime greatly reduced by parallelization: use FastTreeMP w/ same options instead of FastTree
-FastTree -nt -gamma -fastest -no2nd -spr 4 ./genome_prediction/gg_13_5_study_db.fasta.aligned.filtered/gg_13_5_study_db_aligned_pfiltered.fasta > ./genome_prediction/study_tree.tree
+FastTreeMP -nt -gamma -fastest -no2nd -spr 4 ./genome_prediction/gg_13_5_study_db.fasta.aligned.filtered/gg_13_5_study_db_aligned_pfiltered.fasta > ./genome_prediction/study_tree.tree
 ```
 ## Part 3: Create new precalculated files
 **Adapted from** https://picrust.github.io/picrust/tutorials/genome_prediction.html
@@ -103,15 +108,17 @@ grep "study_[0-9]*" ./genome_prediction/gg_13_5_study_db.fasta.aligned.filtered/
 # predict traits
 predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_16S.tab -g "$(< study_ids)"
 predict_traits.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/asr/KEGG_asr_counts.tab -o ./genome_prediction/predict_traits/ko_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_KEGG.tab -g "$(< study_ids)"
+# add KEGG metadata
+cat kegg_meta >> ./genome_prediction/predict_traits/ko_precalculated.tab
 ```
 ## Part 4: Run PICRUSt (finally!)
 ```sh
 # run PICRUSt
 normalize_by_copy_number.py -i sample_counts.biom -o norm_counts.biom -c ./genome_prediction/predict_traits/16S_precalculated.tab
 predict_metagenomes.py -i norm_counts.biom -o meta_counts_asr.biom -c ./genome_prediction/predict_traits/ko_precalculated.tab
+# optional: agglomerate counts by KEGG pathway level
+categorize_by_function.py -i meta_counts_asr.biom -o cat_2_counts_asr.biom -c KEGG_Pathways -l 2
 ```
-**Final note:** the last key missing pieces are:
-1. KEGG BRITE pathway information for each KEGG ID
 
 Happy to discuss any part of this / incorporate suggested modifications.
 
