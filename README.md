@@ -3,7 +3,8 @@
 
 ## Readme
 Updates from (v2)
-- Added KEGG metadata for categorize_by_function.py
+- Added steps to enable categorize_by_function.py
+
 Updates from (v1):
 - Validation against shotgun metagenome data available
 	- DADA2-PICRUSt performs as well as VSEARCH-PICRUSt (see figures below)
