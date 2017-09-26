@@ -1,7 +1,9 @@
-
-# DADA2 -> PICRUSt via ASR (v2.1)
+# DADA2 -> PICRUSt via ASR (v2.2)
 
 ## Readme
+Updates from (v2.1)
+- Added Part 5 to address MemoryError in predict_traits.py steps
+
 Updates from (v2)
 - Added steps to enable categorize_by_function.py
 
@@ -49,7 +51,7 @@ gunzip -c ko_13_5_precalculated.tab.gz | tail -n 2 > kegg_meta
 
 **Note:** Make sure to modify file locations and directories as you like them; this pipeline as written assumes the input files and folders (listed above) are in a folder named `genome_prediction` which is within your current directory. Also, double check that vsearch is in your path. If not, just swap "vsearch" below with an absolute path to the vsearch binary.
 
-```R
+```r
 # Dependencies: ShortRead & biom
 library(ShortRead)
 library(biom) # note: use Joey's biom latest dev version; library(devtools); install_github("joey711/biom");
@@ -94,6 +96,7 @@ FastTreeMP -nt -gamma -fastest -no2nd -spr 4 ./genome_prediction/gg_13_5_study_d
 ```
 ## Part 3: Create new precalculated files
 **Adapted from** https://picrust.github.io/picrust/tutorials/genome_prediction.html
+### Note: If you receive a MemoryError on the predict_traits.py step, see Part 5.
 
 ```sh
 # format 16S copy number data
@@ -119,7 +122,31 @@ predict_metagenomes.py -i norm_counts.biom -o meta_counts_asr.biom -c ./genome_p
 # optional: agglomerate counts by KEGG pathway level
 categorize_by_function.py -i meta_counts_asr.biom -o cat_2_counts_asr.biom -c KEGG_Pathways -l 2
 ```
-
+## Part 5: (For those encountering MemoryErrors in Part 3)
+```sh
+# replace both predict_traits.py steps with the following
+predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -g "$(< study_ids)"
+# create tmp directories
+mkdir ./genome_prediction/traits_tmp
+mkdir ./genome_prediction/predict_traits/tmp/
+# run predict_traits in batches and output to individual files
+BATCH=2000
+for ((i=2, j=$BATCH; j<=$(head -n 1 ./genome_prediction/format/KEGG/trait_table.tab | wc -w); i=i+$BATCH, j=j+$BATCH));
+do
+	echo "$i - $j IDs"
+	cat ./genome_prediction/format/KEGG/trait_table.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/trait_tmp_$i.txt ; 
+	cat ./genome_prediction/asr/KEGG_asr_counts.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/asr_tmp_$i.txt ; 
+	predict_traits.py -i ./genome_prediction/traits_tmp/trait_tmp_$i.txt -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/traits_tmp/asr_tmp_$i.txt -o ./genome_prediction/predict_traits/tmp/ko_precalculated.$i.tab -g "$(< study_ids)"; 
+done;
+# combine results into single ko_precalculated.tab file
+cut -f 1 ./genome_prediction/predict_traits/tmp/ko_precalculated.2.tab > ./genome_prediction/predict_traits/ko_precalculated.tab
+ls ./genome_prediction/predict_traits/tmp/ | grep "ko_precalculated" | while read f; 
+do 
+	paste ./genome_prediction/predict_traits/ko_precalculated.tab <(cut -f 2- ./genome_prediction/predict_traits/tmp/$f) > ./genome_prediction/predict_traits/results_tmp; 
+	cp ./genome_prediction/predict_traits/results_tmp ./genome_prediction/predict_traits/ko_precalculated.tab;  
+done; 
+# proceed with Part 4 as above
+```
 Happy to discuss any part of this / incorporate suggested modifications.
 
 ## DADA2 -> PICRUSt validation
