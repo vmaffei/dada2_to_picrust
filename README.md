@@ -32,7 +32,6 @@ Outputs:
 - PICRUSt-normalized .biom and -metagenome predictions .biom
 
 Points of improvement:
-- Add KEGG BRITE hierarchy pathway information (cannot use categorize_by_function.py without this)
 - Add phyloseq import_genome function?
 
 Multiple lines in part 3 of this workflow were taken from the official picrust genome prediction tutorial https://picrust.github.io/picrust/tutorials/genome_prediction.html
