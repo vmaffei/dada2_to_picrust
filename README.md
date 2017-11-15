@@ -1,6 +1,10 @@
-# DADA2 -> PICRUSt via ASR (v2.2)
+# DADA2 -> PICRUSt via ASR (v2.3)
 
 ## Readme
+Updates from (v2.2)
+- Modified Part 0 to fix predict_metagenomes.py errors in Part 4
+- Modified Part 3 and 5 to use the "-l" option in predict_traits.py instead of "-g" to filter for many study sequences
+
 Updates from (v2.1)
 - Added Part 5 to address MemoryError in predict_traits.py steps
 
@@ -35,14 +39,16 @@ Multiple lines in part 3 of this workflow were taken from the official picrust g
 
 ## Part 0: Generate gg_16S_counts.tab and gg_ko_counts.tab files
 **Note:** This step needs to be performed only once. Once these files are on-hand, they may be reused in subsequent projects. These files are used in Part 3 only.
+
 ```sh
 # build gg_16S_counts.tab and gg_ko_counts.tab
 gunzip -c 16S_13_5_precalculated.tab.gz | sed 's/\#OTU_IDs/taxon_oid/g' > gg_16S_counts.tab
-gunzip -c ko_13_5_precalculated.tab.gz | sed 's/\#OTU_IDs/GenomeID/g' > gg_ko_counts.tab
+gunzip -c ko_13_5_precalculated.tab.gz | sed 's/\#OTU_IDs/GenomeID/g' | grep -v metadata_KEGG | cut -f 1-6910 > gg_ko_counts.tab
 # remove empty lines in gg_ko_counts.tab
 sed -i '/^\s*$/d' gg_ko_counts.tab
 # save KEGG Pathways and Description metadata
-gunzip -c ko_13_5_precalculated.tab.gz | tail -n 2 > kegg_meta
+echo "" > kegg_meta
+gunzip -c ko_13_5_precalculated.tab.gz | grep metadata_KEGG >> kegg_meta
 ```
 
 ## Part 1: Start with R
@@ -106,11 +112,12 @@ format_tree_and_trait_table.py -t ./genome_prediction/study_tree.tree -i gg_ko_c
 # perform ancestral state reconstruction
 ancestral_state_reconstruction.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/pruned_tree.newick -o ./genome_prediction/asr/16S_asr_counts.tab -c ./genome_prediction/asr/asr_ci_16S.tab
 ancestral_state_reconstruction.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/pruned_tree.newick -o ./genome_prediction/asr/KEGG_asr_counts.tab -c ./genome_prediction/asr/asr_ci_KEGG.tab
-# collect study sequence ids for predict_traits.py -g (greatly reduces runtime)
-grep "study_[0-9]*" ./genome_prediction/gg_13_5_study_db.fasta.aligned.filtered/gg_13_5_study_db_aligned_pfiltered.fasta -o | tr "\n" "," > study_ids
+# collect study sequence ids for predict_traits.py -l (greatly reduces runtime)
+# convert biom to tsv using biom-format
+biom convert -i sample_counts.biom -o sample_counts.tab --to-tsv
 # predict traits
-predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_16S.tab -g "$(< study_ids)"
-predict_traits.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/asr/KEGG_asr_counts.tab -o ./genome_prediction/predict_traits/ko_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_KEGG.tab -g "$(< study_ids)"
+predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_16S.tab -l sample_counts.tab
+predict_traits.py -i ./genome_prediction/format/KEGG/trait_table.tab -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/asr/KEGG_asr_counts.tab -o ./genome_prediction/predict_traits/ko_precalculated.tab -a -c ./genome_prediction/asr/asr_ci_KEGG.tab -l sample_counts.tab
 # add KEGG metadata
 cat kegg_meta >> ./genome_prediction/predict_traits/ko_precalculated.tab
 ```
@@ -125,7 +132,7 @@ categorize_by_function.py -i meta_counts_asr.biom -o cat_2_counts_asr.biom -c KE
 ## Part 5: (For those encountering MemoryErrors in Part 3)
 ```sh
 # replace both predict_traits.py steps with the following
-predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -g "$(< study_ids)"
+predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_prediction/format/16S/reference_tree.newick -r ./genome_prediction/asr/16S_asr_counts.tab -o ./genome_prediction/predict_traits/16S_precalculated.tab -l sample_counts.tab
 # create tmp directories
 mkdir ./genome_prediction/traits_tmp
 mkdir ./genome_prediction/predict_traits/tmp/
@@ -136,7 +143,7 @@ do
 	echo "$i - $j IDs"
 	cat ./genome_prediction/format/KEGG/trait_table.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/trait_tmp_$i.txt ; 
 	cat ./genome_prediction/asr/KEGG_asr_counts.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/asr_tmp_$i.txt ; 
-	predict_traits.py -i ./genome_prediction/traits_tmp/trait_tmp_$i.txt -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/traits_tmp/asr_tmp_$i.txt -o ./genome_prediction/predict_traits/tmp/ko_precalculated.$i.tab -g "$(< study_ids)"; 
+	predict_traits.py -i ./genome_prediction/traits_tmp/trait_tmp_$i.txt -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/traits_tmp/asr_tmp_$i.txt -o ./genome_prediction/predict_traits/tmp/ko_precalculated.$i.tab -l sample_counts.tab
 done;
 # combine results into single ko_precalculated.tab file
 cut -f 1 ./genome_prediction/predict_traits/tmp/ko_precalculated.2.tab > ./genome_prediction/predict_traits/ko_precalculated.tab
