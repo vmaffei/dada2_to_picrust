@@ -151,6 +151,8 @@ do
 	paste ./genome_prediction/predict_traits/ko_precalculated.tab <(cut -f 2- ./genome_prediction/predict_traits/tmp/$f) > ./genome_prediction/predict_traits/results_tmp; 
 	cp ./genome_prediction/predict_traits/results_tmp ./genome_prediction/predict_traits/ko_precalculated.tab;  
 done; 
+# add KEGG metadata
+cat kegg_meta >> ./genome_prediction/predict_traits/ko_precalculated.tab
 # proceed with Part 4 as above
 ```
 Happy to discuss any part of this / incorporate suggested modifications.
