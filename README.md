@@ -1,6 +1,9 @@
-# DADA2 -> PICRUSt via ASR (v2.3)
+# DADA2 -> PICRUSt via ASR (v2.4)
 
 ## Readme
+Updates from (v2.3)
+- Modified Part 5 to fix incomplete trait prediction
+
 Updates from (v2.2)
 - Modified Part 0 to fix predict_metagenomes.py errors in Part 4
 - Modified Part 3 and 5 to use the "-l" option in predict_traits.py instead of "-g" to filter for many study sequences
@@ -137,13 +140,15 @@ mkdir ./genome_prediction/traits_tmp
 mkdir ./genome_prediction/predict_traits/tmp/
 # run predict_traits in batches and output to individual files
 BATCH=2000
-for ((i=2, j=$BATCH; j<=$(head -n 1 ./genome_prediction/format/KEGG/trait_table.tab | wc -w); i=i+$BATCH, j=j+$BATCH));
+for ((i=2, j=$((BATCH+1)); j<=$(head -n 1 ./genome_prediction/format/KEGG/trait_table.tab | wc -w); i=i+$BATCH, j=j+$BATCH));
 do
 	echo "$i - $j IDs"
 	cat ./genome_prediction/format/KEGG/trait_table.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/trait_tmp_$i.txt ; 
 	cat ./genome_prediction/asr/KEGG_asr_counts.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/asr_tmp_$i.txt ; 
 	predict_traits.py -i ./genome_prediction/traits_tmp/trait_tmp_$i.txt -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/traits_tmp/asr_tmp_$i.txt -o ./genome_prediction/predict_traits/tmp/ko_precalculated.$i.tab -l sample_counts.tab
 done;
+j=$(head -n 1 ./genome_prediction/format/KEGG/trait_table.tab | wc -w)
+echo "$i - $j"
 # combine results into single ko_precalculated.tab file
 cut -f 1 ./genome_prediction/predict_traits/tmp/ko_precalculated.2.tab > ./genome_prediction/predict_traits/ko_precalculated.tab
 ls ./genome_prediction/predict_traits/tmp/ | grep "ko_precalculated" | while read f; 
