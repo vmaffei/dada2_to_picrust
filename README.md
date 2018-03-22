@@ -139,7 +139,7 @@ predict_traits.py -i ./genome_prediction/format/16S/trait_table.tab -t ./genome_
 mkdir ./genome_prediction/traits_tmp
 mkdir ./genome_prediction/predict_traits/tmp/
 # run predict_traits in batches and output to individual files
-BATCH=1377
+BATCH=2000
 for ((i=2, j=$((BATCH+1)); j<=$(head -n 1 ./genome_prediction/format/KEGG/trait_table.tab | wc -w); i=i+$BATCH, j=j+$BATCH));
 do
 	echo "$i - $j"
@@ -147,6 +147,12 @@ do
 	cat ./genome_prediction/asr/KEGG_asr_counts.tab | cut -f 1,$i-$j > ./genome_prediction/traits_tmp/asr_tmp_$i.txt ; 
 	predict_traits.py -i ./genome_prediction/traits_tmp/trait_tmp_$i.txt -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/traits_tmp/asr_tmp_$i.txt -o ./genome_prediction/predict_traits/tmp/ko_precalculated.$i.tab -l sample_counts.tab
 done;
+# run last iteration
+j=$(($j-$BATCH+1)); k=$(head -n 1 ./genome_prediction/format/KEGG/trait_table.tab | wc -w);
+echo "$j - $k"
+cat ./genome_prediction/format/KEGG/trait_table.tab | cut -f 1,$j-$k > ./genome_prediction/traits_tmp/trait_tmp_$j.txt 
+cat ./genome_prediction/asr/KEGG_asr_counts.tab | cut -f 1,$j-$k > ./genome_prediction/traits_tmp/asr_tmp_$j.txt 
+predict_traits.py -i ./genome_prediction/traits_tmp/trait_tmp_$j.txt -t ./genome_prediction/format/KEGG/reference_tree.newick -r ./genome_prediction/traits_tmp/asr_tmp_$j.txt -o ./genome_prediction/predict_traits/tmp/ko_precalculated.$j.tab -l sample_counts.tab
 # combine results into single ko_precalculated.tab file
 cut -f 1 ./genome_prediction/predict_traits/tmp/ko_precalculated.2.tab > ./genome_prediction/predict_traits/ko_precalculated.tab
 ls ./genome_prediction/predict_traits/tmp/ | grep "ko_precalculated" | while read f; 
